@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -126,12 +127,12 @@ impl IntegrationRecommendation {
             || (self.available && self.state == IntegrationStatusKind::NotInstalled)
     }
 
-    pub fn status_label(&self) -> &'static str {
+    pub fn status_label(&self) -> String {
         match (self.available, self.state) {
-            (_, IntegrationStatusKind::Current) => "installed",
-            (_, IntegrationStatusKind::Outdated) => "update available",
-            (true, IntegrationStatusKind::NotInstalled) => "available",
-            (false, IntegrationStatusKind::NotInstalled) => "not found",
+            (_, IntegrationStatusKind::Current) => t!("installed").to_string(),
+            (_, IntegrationStatusKind::Outdated) => t!("update available").to_string(),
+            (true, IntegrationStatusKind::NotInstalled) => t!("available").to_string(),
+            (false, IntegrationStatusKind::NotInstalled) => t!("not found").to_string(),
         }
     }
 }

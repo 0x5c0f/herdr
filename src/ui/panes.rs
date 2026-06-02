@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -470,21 +471,21 @@ fn render_empty(app: &AppState, frame: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(""),
         Line::from(Span::styled(
-            "  No workspaces yet",
+            t!("  No workspaces yet"),
             Style::default().fg(p.overlay0),
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "  A workspace is one project context.",
+            t!("  A workspace is one project context."),
             Style::default().fg(p.overlay1),
         )),
         Line::from(Span::styled(
-            "  Its root pane (top-left) sets the default repo or folder name.",
+            t!("  Its root pane (top-left) sets the default repo or folder name."),
             Style::default().fg(p.overlay1),
         )),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Press ", Style::default().fg(p.overlay0)),
+            Span::styled(t!("  Press "), Style::default().fg(p.overlay0)),
             Span::styled(
                 app.keybinds
                     .new_workspace
@@ -492,7 +493,7 @@ fn render_empty(app: &AppState, frame: &mut Frame, area: Rect) {
                     .unwrap_or_else(|| "unset".to_string()),
                 Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" to create one", Style::default().fg(p.overlay0)),
+            Span::styled(t!(" to create one"), Style::default().fg(p.overlay0)),
         ]),
     ];
     frame.render_widget(

@@ -3135,6 +3135,11 @@ pub fn run_server() -> io::Result<()> {
     }
 
     let loaded_config = config::Config::load();
+
+    // Set locale for i18n
+    let resolved_locale = crate::locale::resolve_locale(&loaded_config.config.ui.locale);
+    rust_i18n::set_locale(&resolved_locale);
+
     let (api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
     let event_hub = api::EventHub::default();
 

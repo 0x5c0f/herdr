@@ -1132,6 +1132,8 @@ impl App {
                     self.state.request_client_config_reload = true;
                 }
                 self.state.sound = config.ui.sound.clone();
+                let new_locale = crate::locale::resolve_locale(&config.ui.locale);
+                rust_i18n::set_locale(&new_locale);
                 self.state.toast_config = config.ui.toast.clone();
             }
         }

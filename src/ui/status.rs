@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -179,13 +180,13 @@ pub(super) fn agent_icon(
     }
 }
 
-pub(super) fn state_label(state: AgentState, seen: bool) -> &'static str {
+pub(super) fn state_label(state: AgentState, seen: bool) -> String {
     match (state, seen) {
-        (AgentState::Blocked, _) => "blocked",
-        (AgentState::Working, _) => "working",
-        (AgentState::Idle, false) => "done",
-        (AgentState::Idle, true) => "idle",
-        (AgentState::Unknown, _) => "idle",
+        (AgentState::Blocked, _) => t!("blocked").into_owned(),
+        (AgentState::Working, _) => t!("working").into_owned(),
+        (AgentState::Idle, false) => t!("done").into_owned(),
+        (AgentState::Idle, true) => t!("idle").into_owned(),
+        (AgentState::Unknown, _) => t!("idle").into_owned(),
     }
 }
 

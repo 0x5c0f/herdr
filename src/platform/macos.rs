@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::os::fd::RawFd;

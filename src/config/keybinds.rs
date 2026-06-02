@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crossterm::event::KeyEvent;
+use rust_i18n::t;
 use crossterm::event::{KeyCode, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use tracing::warn;

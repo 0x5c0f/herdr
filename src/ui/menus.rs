@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
@@ -46,13 +47,13 @@ pub(super) fn render_prefix_overlay(app: &AppState, frame: &mut Frame, area: Rec
         Span::styled(" PREFIX ", mode_style),
         Span::raw(" "),
         Span::styled("esc", key),
-        Span::styled(" cancel  ", dim),
+        Span::styled(format!(" {}  ", t!("cancel")), dim),
         Span::styled(prefix, key),
-        Span::styled(" send prefix  ", dim),
+        Span::styled(format!(" {}  ", t!("send prefix")), dim),
         Span::styled(workspace_picker, key),
-        Span::styled(" workspace nav  ", dim),
+        Span::styled(format!(" {}  ", t!("workspace nav")), dim),
         Span::styled(help, key),
-        Span::styled(" keybinds", dim),
+        Span::styled(format!(" {}", t!("keybinds")), dim),
     ]);
 
     let overlay_y = area.y + area.height.saturating_sub(1);
@@ -74,21 +75,21 @@ pub(super) fn render_copy_mode_overlay(app: &AppState, frame: &mut Frame, area: 
         .copy_mode
         .is_some_and(|copy_mode| copy_mode.selection.is_some())
     {
-        "selecting"
+        t!("selecting")
     } else {
-        "select"
+        t!("select")
     };
     let line = Line::from(vec![
         Span::styled(" COPY ", mode_style),
         Span::raw(" "),
         Span::styled("h/j/k/l w/b/e { }", key),
-        Span::styled(" move  ", dim),
+        Span::styled(format!(" {}  ", t!("move")), dim),
         Span::styled("v/space", key),
         Span::styled(format!(" {select}  "), dim),
         Span::styled("y/enter", key),
-        Span::styled(" copy  ", dim),
+        Span::styled(format!(" {}  ", t!("copy")), dim),
         Span::styled("q/esc", key),
-        Span::styled(" exit", dim),
+        Span::styled(format!(" {}", t!("exit")), dim),
     ]);
 
     let overlay_y = area.y + area.height.saturating_sub(1);
@@ -127,31 +128,31 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
         Span::styled(" NAVIGATE ", mode_style),
         Span::raw(" "),
         Span::styled("esc", key),
-        Span::styled(" back  ", dim),
+        Span::styled(format!(" {}  ", t!("back")), dim),
         Span::styled(workspace_nav, key),
         Span::styled(" ws  ", dim),
         Span::styled("⇥", key),
-        Span::styled(" pane  ", dim),
+        Span::styled(format!(" {}  ", t!("pane")), dim),
         Span::styled(goto, key),
-        Span::styled(" navigator  ", dim),
+        Span::styled(format!(" {}  ", t!("navigator")), dim),
         Span::styled(new_tab, key),
-        Span::styled(" new tab  ", dim),
+        Span::styled(format!(" {}  ", t!("new tab")), dim),
         Span::styled(split_vertical, key),
-        Span::styled(" split│  ", dim),
+        Span::styled(format!(" {}│  ", t!("split")), dim),
         Span::styled(split_horizontal, key),
-        Span::styled(" split─  ", dim),
+        Span::styled(format!(" {}─  ", t!("split")), dim),
         Span::styled(close_pane, key),
-        Span::styled(" close  ", dim),
+        Span::styled(format!(" {}  ", t!("close")), dim),
         Span::styled(zoom, key),
-        Span::styled(" zoom  ", dim),
+        Span::styled(format!(" {}  ", t!("zoom")), dim),
         Span::styled(resize, key),
-        Span::styled(" resize  ", dim),
+        Span::styled(format!(" {}  ", t!("resize")), dim),
         Span::styled(help, key),
-        Span::styled(" keybinds  ", dim),
+        Span::styled(format!(" {}  ", t!("keybinds")), dim),
         Span::styled(settings, key),
-        Span::styled(" settings  ", dim),
+        Span::styled(format!(" {}  ", t!("settings")), dim),
         Span::styled(detach, key),
-        Span::styled(" detach", dim),
+        Span::styled(format!(" {}", t!("detach")), dim),
     ]);
 
     let overlay_y = area.y + area.height.saturating_sub(1);
@@ -159,13 +160,14 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
     render_bottom_bar(frame, overlay_area, line, app.palette.panel_bg);
 
     if app.update_available.is_some() {
+        let update_text = format!(" {}", t!("update ready"));
+        let width = (update_text.chars().count() as u16).min(overlay_area.width);
         let status = Line::from(vec![Span::styled(
-            " update ready",
+            update_text,
             Style::default()
                 .fg(app.palette.accent)
                 .add_modifier(Modifier::BOLD),
         )]);
-        let width = 13u16.min(overlay_area.width);
         let status_area = Rect::new(
             overlay_area.x + overlay_area.width.saturating_sub(width),
             overlay_area.y,
@@ -213,13 +215,14 @@ pub(super) fn render_global_launcher_menu(app: &AppState, frame: &mut Frame) {
                 .add_modifier(Modifier::BOLD)
         };
 
+        let localized = t!(*item);
         let line = if app.global_menu_item_has_badge(item) {
             Line::from(vec![
                 Span::styled(" ●", badge_style),
-                Span::styled(format!(" {item} "), item_style),
+                Span::styled(format!(" {localized} "), item_style),
             ])
         } else {
-            Line::from(Span::styled(format!(" {item} "), item_style))
+            Line::from(Span::styled(format!(" {localized} "), item_style))
         };
         frame.render_widget(Paragraph::new(line).alignment(Alignment::Left), rect);
     }
@@ -240,11 +243,11 @@ pub(super) fn render_resize_overlay(app: &AppState, frame: &mut Frame, area: Rec
         Span::styled(" RESIZE ", mode_style),
         Span::raw("  "),
         Span::styled("h/l", key),
-        Span::styled(" width  ", dim),
+        Span::styled(format!(" {}  ", t!("width")), dim),
         Span::styled("j/k", key),
-        Span::styled(" height  ", dim),
+        Span::styled(format!(" {}  ", t!("height")), dim),
         Span::styled("esc", key),
-        Span::styled(" done", dim),
+        Span::styled(format!(" {}", t!("done")), dim),
     ]);
 
     let overlay_y = area.y + area.height.saturating_sub(1);
@@ -268,7 +271,7 @@ pub(super) fn render_context_menu(app: &AppState, frame: &mut Frame) {
     let items: Vec<ListItem> = menu
         .items()
         .iter()
-        .map(|item| ListItem::new(Line::from(*item)))
+        .map(|item| ListItem::new(Line::from(t!(*item).to_string())))
         .collect();
     let list = List::new(items)
         .style(Style::default().fg(p.text))

@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -56,7 +57,7 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
             crate::detect::AgentState::Blocked,
             true,
             app.spinner_tick,
-            "blocked",
+            t!("blocked").into_owned(),
             app,
         ),
         Some(NavigatorStateFilter::Working) => push_state_chip(
@@ -64,7 +65,7 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
             crate::detect::AgentState::Working,
             true,
             app.spinner_tick,
-            "working",
+            t!("working").into_owned(),
             app,
         ),
         Some(NavigatorStateFilter::Idle) => push_state_chip(
@@ -72,7 +73,7 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
             crate::detect::AgentState::Idle,
             true,
             app.spinner_tick,
-            "idle",
+            t!("idle").into_owned(),
             app,
         ),
         Some(NavigatorStateFilter::Done) => push_state_chip(
@@ -80,18 +81,19 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
             crate::detect::AgentState::Idle,
             false,
             app.spinner_tick,
-            "done",
+            t!("done").into_owned(),
             app,
         ),
         None if query.is_empty() => spans.push(Span::styled(
-            "search panes",
+            t!("search panes"),
             Style::default().fg(p.overlay0),
         )),
         None => spans.push(Span::styled(query.to_string(), Style::default().fg(p.text))),
     }
     spans.push(Span::styled(
         format!(
-            "{count:>width$} panes",
+            "{count:>width$} {}",
+            t!("panes"),
             width = area.width.saturating_sub(16) as usize
         ),
         Style::default().fg(p.overlay0),
@@ -104,7 +106,7 @@ fn push_state_chip(
     state: crate::detect::AgentState,
     seen: bool,
     tick: u32,
-    label: &'static str,
+    label: String,
     app: &AppState,
 ) {
     let (icon, icon_style) = agent_icon(state, seen, tick, &app.palette);
@@ -308,7 +310,7 @@ fn workspace_detail(app: &AppState, ws_idx: usize) -> String {
     let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
     let label = ws.display_name_from(&app.terminals, &terminal_runtimes);
     let pane_count = ws.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>();
-    let mut parts = vec![label, format!("{pane_count} panes")];
+    let mut parts = vec![label, t!("{count} panes", count = pane_count).into_owned()];
     if !rowless_workspace_activity(app, ws_idx).is_empty() {
         parts.push(rowless_workspace_activity(app, ws_idx));
     }
@@ -325,8 +327,8 @@ fn tab_detail(app: &AppState, ws_idx: usize, tab_idx: usize) -> String {
     let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
     let mut parts = vec![
         ws.display_name_from(&app.terminals, &terminal_runtimes),
-        format!("tab: {}", tab.display_name()),
-        format!("{} panes", tab.panes.len()),
+        format!("{}: {}", t!("tab"), tab.display_name()),
+        t!("{count} panes", count = tab.panes.len()).into_owned(),
     ];
     let rows = app.navigator_rows();
     if let Some(meta) = rows
@@ -355,10 +357,10 @@ fn pane_detail(
     let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
     let mut parts = vec![ws.display_name_from(&app.terminals, &terminal_runtimes)];
     if ws.tabs.len() > 1 {
-        parts.push(format!("tab: {}", tab.display_name()));
+        parts.push(format!("{}: {}", t!("tab"), tab.display_name()));
     }
     if let Some(pane_number) = ws.public_pane_number(pane_id) {
-        parts.push(format!("pane {pane_number}"));
+        parts.push(t!("pane {number}", number = pane_number).into_owned());
     }
     if let Some(terminal_id) = tab.terminal_id(pane_id) {
         if let Some(terminal) = app.terminals.get(terminal_id) {
@@ -387,7 +389,7 @@ fn pane_detail(
                     .unwrap_or_else(|| display_state(state, seen).to_string());
                 parts.push(status);
             } else {
-                parts.push("shell".to_string());
+                parts.push(t!("shell").into_owned());
             }
             if let Some(status) = terminal.effective_custom_status() {
                 parts.push(status.to_string());
@@ -461,15 +463,15 @@ fn render_footer(app: &AppState, frame: &mut Frame, area: Rect) {
     let dim = Style::default().fg(p.overlay0);
     let line = Line::from(vec![
         Span::styled(" enter", key),
-        Span::styled(" switch  ", dim),
+        Span::styled(format!(" {}  ", t!("switch")), dim),
         Span::styled("/", key),
-        Span::styled(" search  ", dim),
+        Span::styled(format!(" {}  ", t!("search")), dim),
         Span::styled("b/w/i/d/a", key),
-        Span::styled(" states  ", dim),
+        Span::styled(format!(" {}  ", t!("states")), dim),
         Span::styled("j/k/↑↓", key),
-        Span::styled(" move  ", dim),
+        Span::styled(format!(" {}  ", t!("move")), dim),
         Span::styled("esc", key),
-        Span::styled(" close", dim),
+        Span::styled(format!(" {}", t!("close")), dim),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }

@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use crate::app;
 use crate::app::state::AppState;
 use crate::config;
@@ -54,11 +55,11 @@ pub(crate) fn toast_message_from_state_change(
         })
 }
 
-fn toast_event_text(kind: app::state::ToastKind) -> &'static str {
+fn toast_event_text(kind: app::state::ToastKind) -> String {
     match kind {
-        app::state::ToastKind::NeedsAttention => "needs attention",
-        app::state::ToastKind::Finished => "finished",
-        app::state::ToastKind::UpdateInstalled => "updated",
+        app::state::ToastKind::NeedsAttention => t!("needs attention").to_string(),
+        app::state::ToastKind::Finished => t!("finished").to_string(),
+        app::state::ToastKind::UpdateInstalled => t!("updated").to_string(),
     }
 }
 

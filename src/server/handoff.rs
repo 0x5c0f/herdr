@@ -1,4 +1,3 @@
-#[cfg(unix)]
 use std::io::{self, Read, Write};
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, RawFd};

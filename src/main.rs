@@ -33,6 +33,7 @@ mod integration;
 mod ipc;
 mod kitty_graphics;
 mod layout;
+mod locale;
 mod logging;
 mod pane;
 mod persist;
@@ -55,6 +56,8 @@ mod ui;
 mod update;
 mod workspace;
 mod worktree;
+
+rust_i18n::i18n!("locales");
 
 fn init_logging() {
     crate::logging::init_file_logging("herdr.log");
@@ -223,6 +226,9 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Accepts: hex (#89b4fa), named colors (cyan, blue, magenta), or rgb(r,g,b)
 # accent = "cyan"
 
+# UI language: "auto" (detect from $LANG), "en", "zh-CN"
+# locale = "auto"
+
 # Background notification popup delivery
 [ui.toast]
 # off = disable pop-up notifications
@@ -309,8 +315,8 @@ fn random_nested_message() -> &'static str {
 
 fn exit_if_nested_disabled(config: &config::Config) {
     if should_block_nested(config) {
-        eprintln!("\x1b[1merror:\x1b[0m nested herdr is disabled by default.");
-        eprintln!("see configuration if you want to enable it.");
+        eprintln!("\x1b[1m{}:\x1b[0m {}", rust_i18n::t!("error"), rust_i18n::t!("nested herdr is disabled by default."));
+        eprintln!("{}", rust_i18n::t!("see configuration if you want to enable it."));
         eprintln!();
         eprintln!("\x1b[2m\"{}\"\x1b[0m", random_nested_message());
         std::process::exit(1);
@@ -322,16 +328,16 @@ fn main() -> io::Result<()> {
     let args = match session::configure_from_args(&raw_args) {
         Ok(args) => args,
         Err(err) => {
-            eprintln!("error: {err}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("{}: {err}", rust_i18n::t!("error"));
+            eprintln!("{}", rust_i18n::t!("run 'herdr --help' for usage"));
             std::process::exit(2);
         }
     };
     let (args, remote_launch) = match remote::extract_remote_args(&args) {
         Ok(parsed) => parsed,
         Err(err) => {
-            eprintln!("error: {err}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("{}: {err}", rust_i18n::t!("error"));
+            eprintln!("{}", rust_i18n::t!("run 'herdr --help' for usage"));
             std::process::exit(2);
         }
     };
@@ -345,8 +351,8 @@ fn main() -> io::Result<()> {
             )
         })
     {
-        eprintln!("error: --remote can only be used with the default launch command");
-        eprintln!("run 'herdr --help' for usage");
+        eprintln!("{}: {}", rust_i18n::t!("error"), rust_i18n::t!("--remote can only be used with the default launch command"));
+        eprintln!("{}", rust_i18n::t!("run 'herdr --help' for usage"));
         std::process::exit(2);
     }
 
@@ -367,6 +373,8 @@ fn main() -> io::Result<()> {
     if args.get(1).map(|s| s.as_str()) == Some("client") {
         let loaded_config = config::Config::load();
         exit_if_nested_disabled(&loaded_config.config);
+        let resolved_locale = crate::locale::resolve_locale(&loaded_config.config.ui.locale);
+        rust_i18n::set_locale(&resolved_locale);
         return client::run_client();
     }
 
@@ -536,8 +544,8 @@ fn main() -> io::Result<()> {
             ]
             .contains(&arg.as_str())
         {
-            eprintln!("unknown command: {arg}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("{}: {arg}", rust_i18n::t!("unknown command"));
+            eprintln!("{}", rust_i18n::t!("run 'herdr --help' for usage"));
             std::process::exit(1);
         }
     }
@@ -548,6 +556,9 @@ fn main() -> io::Result<()> {
 
     let loaded_config = config::Config::load();
     exit_if_nested_disabled(&loaded_config.config);
+
+    let resolved_locale = crate::locale::resolve_locale(&loaded_config.config.ui.locale);
+    rust_i18n::set_locale(&resolved_locale);
 
     let no_session = args.iter().any(|a| a == "--no-session");
 

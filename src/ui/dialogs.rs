@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Clear, Paragraph},
     Frame,
 };
+use rust_i18n::t;
 
 use super::widgets::{
     action_button_row_rects, centered_popup_rect, panel_contrast_fg, render_action_button,
@@ -34,15 +35,15 @@ pub(crate) fn rename_button_rects(inner: Rect) -> (Rect, Rect, Rect) {
         &[
             ActionButtonSpec {
                 hint: Some("↵"),
-                label: "save",
+                label: t!("save"),
             },
             ActionButtonSpec {
                 hint: Some("^c"),
-                label: "clear",
+                label: t!("clear"),
             },
             ActionButtonSpec {
                 hint: Some("esc"),
-                label: "cancel",
+                label: t!("cancel"),
             },
         ],
         2,
@@ -55,10 +56,10 @@ pub(super) fn render_rename_overlay(app: &AppState, frame: &mut Frame, area: Rec
     super::dim_background(frame, area);
 
     let title = match app.mode {
-        Mode::RenameWorkspace => "rename workspace",
-        Mode::RenameTab if app.creating_new_tab => "new tab",
-        Mode::RenameTab => "rename tab",
-        Mode::RenamePane => "rename pane",
+        Mode::RenameWorkspace => t!("rename workspace"),
+        Mode::RenameTab if app.creating_new_tab => t!("new tab"),
+        Mode::RenameTab => t!("rename tab"),
+        Mode::RenamePane => t!("rename pane"),
         _ => return,
     };
 
@@ -78,7 +79,7 @@ pub(super) fn render_rename_overlay(app: &AppState, frame: &mut Frame, area: Rec
     ])
     .areas::<5>(inner);
 
-    render_modal_header(frame, rows[0], title, &app.palette);
+    render_modal_header(frame, rows[0], &title, &app.palette);
 
     let input_rect = Rect::new(rows[2].x, rows[2].y, rows[2].width, 1);
     frame.render_widget(Clear, input_rect);
@@ -142,11 +143,11 @@ pub(crate) fn new_linked_worktree_button_rects(inner: Rect) -> (Rect, Rect) {
         &[
             ActionButtonSpec {
                 hint: Some("↵"),
-                label: "create and open",
+                label: t!("create and open"),
             },
             ActionButtonSpec {
                 hint: Some("esc"),
-                label: "cancel",
+                label: t!("cancel"),
             },
         ],
         2,
@@ -161,9 +162,9 @@ pub(crate) fn remove_worktree_popup_rect(area: Rect) -> Option<Rect> {
 
 pub(crate) fn remove_worktree_button_rects(inner: Rect, force_confirmation: bool) -> (Rect, Rect) {
     let primary_label = if force_confirmation {
-        "delete anyway"
+        t!("delete anyway")
     } else {
-        "remove"
+        t!("remove")
     };
     let rects = action_button_row_rects(
         inner,
@@ -174,7 +175,7 @@ pub(crate) fn remove_worktree_button_rects(inner: Rect, force_confirmation: bool
             },
             ActionButtonSpec {
                 hint: Some("esc"),
-                label: "cancel",
+                label: t!("cancel"),
             },
         ],
         2,
@@ -221,11 +222,11 @@ pub(crate) fn open_existing_worktree_button_rects(inner: Rect) -> (Rect, Rect) {
         &[
             ActionButtonSpec {
                 hint: Some("↵"),
-                label: "open",
+                label: t!("open"),
             },
             ActionButtonSpec {
                 hint: Some("esc"),
-                label: "cancel",
+                label: t!("cancel"),
             },
         ],
         2,
@@ -259,7 +260,7 @@ pub(super) fn render_new_linked_worktree_overlay(app: &AppState, frame: &mut Fra
     ])
     .areas::<8>(inner);
 
-    render_modal_header(frame, rows[0], "new worktree", &app.palette);
+    render_modal_header(frame, rows[0], &t!("new worktree"), &app.palette);
 
     frame.render_widget(
         Paragraph::new(" branch").style(Style::default().fg(app.palette.overlay0)),
@@ -438,7 +439,7 @@ pub(super) fn render_open_existing_worktree_overlay(app: &AppState, frame: &mut 
     render_modal_header(
         frame,
         Rect::new(inner.x, inner.y, inner.width, 1),
-        "open worktree",
+        &t!("open worktree"),
         &app.palette,
     );
     render_open_worktree_search(
@@ -575,7 +576,7 @@ fn render_open_worktree_search(
     let mut spans = vec![Span::styled(" / ", focus_style)];
     if open.query.trim().is_empty() {
         spans.push(Span::styled(
-            "filter worktrees",
+            t!("filter worktrees"),
             Style::default().fg(app.palette.overlay0),
         ));
     } else {
@@ -649,9 +650,9 @@ fn confirm_close_overlay_text(app: &AppState) -> (String, String) {
     };
 
     let title = if closes_group {
-        "Close worktree group?"
+        t!("Close worktree group?")
     } else {
-        "Close workspace?"
+        t!("Close workspace?")
     };
     let detail = format!("{ws_name} — {workspace_text}{pane_text}");
     (title.to_string(), detail)
@@ -740,11 +741,11 @@ pub(crate) fn confirm_close_button_rects(inner: Rect) -> (Rect, Rect) {
         &[
             ActionButtonSpec {
                 hint: Some("↵"),
-                label: "confirm",
+                label: t!("confirm"),
             },
             ActionButtonSpec {
                 hint: Some("esc"),
-                label: "cancel",
+                label: t!("cancel"),
             },
         ],
         2,

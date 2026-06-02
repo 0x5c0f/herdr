@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
@@ -88,10 +89,10 @@ fn agent_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
     }
 }
 
-fn agent_panel_toggle_label(scope: AgentPanelScope) -> &'static str {
+fn agent_panel_toggle_label(scope: AgentPanelScope) -> String {
     match scope {
-        AgentPanelScope::CurrentWorkspace => "current",
-        AgentPanelScope::AllWorkspaces => "all",
+        AgentPanelScope::CurrentWorkspace => t!("current").into_owned(),
+        AgentPanelScope::AllWorkspaces => t!("all").into_owned(),
     }
 }
 
@@ -1034,10 +1035,10 @@ fn render_workspace_list(
                     "● ",
                     Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("menu", Style::default().fg(p.overlay0)),
+                Span::styled(t!("menu"), Style::default().fg(p.overlay0)),
             ])
         } else {
-            Line::from(vec![Span::styled("menu", Style::default().fg(p.overlay0))])
+            Line::from(vec![Span::styled(t!("menu"), Style::default().fg(p.overlay0))])
         };
         frame.render_widget(
             Paragraph::new(menu_line).alignment(Alignment::Right),
@@ -1066,7 +1067,7 @@ fn render_agent_detail(
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            " agents",
+            t!(" agents"),
             Style::default().fg(p.overlay0).add_modifier(Modifier::BOLD),
         )])),
         Rect::new(area.x, area.y + 1, area.width, 1),
@@ -1106,7 +1107,7 @@ fn render_agent_detail(
         let label = detail
             .state_labels
             .get(agent_panel_status_key(detail.state, detail.seen))
-            .map(String::as_str)
+            .cloned()
             .unwrap_or_else(|| state_label(detail.state, detail.seen));
 
         let row_style = if is_active {

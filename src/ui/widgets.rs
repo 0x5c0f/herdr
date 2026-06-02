@@ -145,7 +145,7 @@ pub(crate) fn action_button_width(hint: Option<&str>, label: &str) -> u16 {
 
 pub(crate) struct ActionButtonSpec<'a> {
     pub hint: Option<&'a str>,
-    pub label: &'a str,
+    pub label: std::borrow::Cow<'a, str>,
 }
 
 pub(crate) fn action_button_row_rects(
@@ -156,7 +156,7 @@ pub(crate) fn action_button_row_rects(
 ) -> Vec<Rect> {
     let widths: Vec<u16> = buttons
         .iter()
-        .map(|button| action_button_width(button.hint, button.label))
+        .map(|button| action_button_width(button.hint, &button.label))
         .collect();
     centered_button_row(area, &widths, gap, row_offset)
 }

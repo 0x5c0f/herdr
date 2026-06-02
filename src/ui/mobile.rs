@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
@@ -245,7 +246,7 @@ pub(crate) fn render_mobile_panel(
 
     let areas = mobile_switcher_areas(app);
     frame.render_widget(
-        Paragraph::new(" switch").style(
+        Paragraph::new(format!(" {}", t!("switch"))).style(
             Style::default()
                 .fg(p.text)
                 .bg(p.panel_bg)
@@ -277,7 +278,7 @@ fn render_header_status(
     }
     let p = &app.palette;
     let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) else {
-        frame.render_widget(Paragraph::new(" no workspace"), area);
+        frame.render_widget(Paragraph::new(format!(" {}", t!("no workspace"))), area);
         return;
     };
 
@@ -290,7 +291,7 @@ fn render_header_status(
     } else {
         state_dot(state, seen, p)
     };
-    let tab_label = format!("tab {}/{}", ws.active_tab + 1, ws.tabs.len());
+    let tab_label = t!("tab {current}/{total}", current = ws.active_tab + 1, total = ws.tabs.len());
     let row1 = Rect::new(area.x, area.y, area.width, 1);
     let tab_w = (tab_label.chars().count() as u16 + 1).min(area.width);
     let name_w = area.width.saturating_sub(tab_w);
@@ -342,7 +343,7 @@ fn render_switch_button(app: &AppState, frame: &mut Frame, area: Rect) {
     }
     let label_y = if area.height > 1 { area.y + 1 } else { area.y };
     frame.render_widget(
-        Paragraph::new("switch")
+        Paragraph::new(t!("switch"))
             .style(
                 Style::default()
                     .fg(p.text)
@@ -366,7 +367,7 @@ fn render_close_button(app: &AppState, frame: &mut Frame, area: Rect) {
             .set_style(Style::default().fg(p.surface_dim).bg(p.surface0));
     }
     frame.render_widget(
-        Paragraph::new("close")
+        Paragraph::new(t!("close"))
             .style(
                 Style::default()
                     .fg(p.overlay1)
@@ -435,7 +436,7 @@ fn render_mobile_switcher_content(
         content,
         doc_y,
         app.mobile_switcher_scroll,
-        "spaces",
+        &t!("spaces"),
         p,
     );
     doc_y += 1;
@@ -445,7 +446,7 @@ fn render_mobile_switcher_content(
         content,
         doc_y,
         app.mobile_switcher_scroll,
-        "+ new workspace",
+        &t!("+ new workspace"),
         p,
     );
     doc_y += 1;
@@ -470,11 +471,11 @@ fn render_mobile_switcher_content(
                     .add_modifier(Modifier::BOLD),
             ),
         ]);
+        let branch_label = ws.branch().map(String::from).unwrap_or_else(|| t!("shell").into_owned());
         let detail = format!(
-            "  {} · tab {}/{}",
-            ws.branch().unwrap_or_else(|| "shell".into()),
-            ws.active_tab + 1,
-            ws.tabs.len()
+            "  {} · {}",
+            branch_label,
+            t!("tab {current}/{total}", current = ws.active_tab + 1, total = ws.tabs.len())
         );
         render_two_line_item(
             frame,
@@ -497,7 +498,7 @@ fn render_mobile_switcher_content(
             content,
             doc_y,
             app.mobile_switcher_scroll,
-            "tabs",
+            &t!("tabs"),
             p,
         );
         doc_y += 1;
@@ -507,17 +508,17 @@ fn render_mobile_switcher_content(
             content,
             doc_y,
             app.mobile_switcher_scroll,
-            "+ new tab",
+            &t!("+ new tab"),
             p,
         );
         doc_y += 1;
         for (idx, tab) in ws.tabs.iter().enumerate() {
             let active = idx == ws.active_tab;
             let bg = mobile_item_bg(false, active, p);
-            let label = if tab.is_auto_named() {
-                format!("tab {}", idx + 1)
+            let label: std::borrow::Cow<'_, str> = if tab.is_auto_named() {
+                t!("tab {number}", number = idx + 1)
             } else {
-                format!("{} · {}", idx + 1, tab.display_name())
+                format!("{} · {}", idx + 1, tab.display_name()).into()
             };
             let title = Line::from(vec![
                 Span::styled("  ", Style::default().bg(bg)),
@@ -554,7 +555,7 @@ fn render_mobile_switcher_content(
         content,
         doc_y,
         app.mobile_switcher_scroll,
-        "agents",
+        &t!("agents"),
         p,
     );
     doc_y += 1;
@@ -600,7 +601,7 @@ fn render_mobile_switcher_content(
         content,
         doc_y,
         app.mobile_switcher_scroll,
-        "menu",
+        &t!("menu"),
         p,
     );
     doc_y += 1;
@@ -853,7 +854,7 @@ fn mobile_screen_rect(app: &AppState) -> Rect {
 
 fn agent_priority_label(app: &AppState) -> String {
     let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) else {
-        return " no agents".to_string();
+        return format!(" {}", t!("no agents"));
     };
     let mut blocked = 0usize;
     let mut working = 0usize;
@@ -867,13 +868,13 @@ fn agent_priority_label(app: &AppState) -> String {
         }
     }
     if blocked > 0 {
-        format!(" ◉ {blocked} blocked")
+        t!(" ◉ {count} blocked", count = blocked).into_owned()
     } else if working > 0 {
-        format!(" {working} working")
+        t!(" {count} working", count = working).into_owned()
     } else if done > 0 {
-        format!(" {done} done")
+        t!(" {count} done", count = done).into_owned()
     } else {
-        " all idle".to_string()
+        t!(" all idle").into_owned()
     }
 }
 
@@ -882,14 +883,14 @@ fn mobile_toast_title(toast: &ToastNotification) -> String {
         ToastKind::NeedsAttention => toast
             .title
             .strip_suffix(" needs attention")
-            .map(|agent| format!("{agent} waiting"))
+            .map(|agent| t!("{agent} waiting", agent = agent).into_owned())
             .unwrap_or_else(|| toast.title.clone()),
         ToastKind::Finished => toast
             .title
             .strip_suffix(" finished")
-            .map(|agent| format!("{agent} done"))
+            .map(|agent| t!("{agent} done", agent = agent).into_owned())
             .unwrap_or_else(|| toast.title.clone()),
-        ToastKind::UpdateInstalled => "update ready".to_string(),
+        ToastKind::UpdateInstalled => t!("update ready").into_owned(),
     }
 }
 

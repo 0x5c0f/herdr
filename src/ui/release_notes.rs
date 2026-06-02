@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
@@ -63,9 +64,9 @@ pub(super) fn render_release_notes_overlay(app: &AppState, frame: &mut Frame, ar
         &app.palette,
     );
     let subtitle = if notes.preview {
-        "update ready"
+        t!("update ready")
     } else {
-        "what's new in this release"
+        t!("what's new in this release")
     };
     frame.render_widget(
         Paragraph::new(subtitle).style(Style::default().fg(app.palette.overlay1)),
@@ -75,7 +76,7 @@ pub(super) fn render_release_notes_overlay(app: &AppState, frame: &mut Frame, ar
         frame,
         release_notes_close_button_rect(header_rows[0]),
         Some("esc"),
-        "close",
+        &t!("close"),
         Style::default()
             .fg(panel_contrast_fg(&app.palette))
             .bg(app.palette.accent)
@@ -124,10 +125,10 @@ pub(super) fn render_release_notes_overlay(app: &AppState, frame: &mut Frame, ar
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(" scroll ", Style::default().fg(app.palette.overlay0)),
+            Span::styled(t!(" scroll "), Style::default().fg(app.palette.overlay0)),
             Span::styled("wheel ↑↓", Style::default().fg(app.palette.text)),
             Span::styled("  ·  ", Style::default().fg(app.palette.overlay0)),
-            Span::styled("close", Style::default().fg(app.palette.overlay0)),
+            Span::styled(t!("close"), Style::default().fg(app.palette.overlay0)),
             Span::styled(" esc / enter ", Style::default().fg(app.palette.text)),
         ])),
         stack.footer.unwrap_or_default(),
@@ -173,9 +174,9 @@ pub(super) fn render_product_announcement_overlay(app: &AppState, frame: &mut Fr
 
     render_modal_header(frame, header_title_area, &announcement.title, &app.palette);
     let subtitle = if announcement.preview {
-        "product announcement preview"
+        t!("product announcement preview")
     } else {
-        "product announcement"
+        t!("product announcement")
     };
     frame.render_widget(
         Paragraph::new(format!("{subtitle} · v{}", announcement.version))
@@ -186,7 +187,7 @@ pub(super) fn render_product_announcement_overlay(app: &AppState, frame: &mut Fr
         frame,
         release_notes_close_button_rect(header_rows[0]),
         Some("esc"),
-        "close",
+        &t!("close"),
         Style::default()
             .fg(panel_contrast_fg(&app.palette))
             .bg(app.palette.accent)
@@ -235,10 +236,10 @@ pub(super) fn render_product_announcement_overlay(app: &AppState, frame: &mut Fr
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(" scroll ", Style::default().fg(app.palette.overlay0)),
+            Span::styled(t!(" scroll "), Style::default().fg(app.palette.overlay0)),
             Span::styled("wheel ↑↓", Style::default().fg(app.palette.text)),
             Span::styled("  ·  ", Style::default().fg(app.palette.overlay0)),
-            Span::styled("close", Style::default().fg(app.palette.overlay0)),
+            Span::styled(t!("close"), Style::default().fg(app.palette.overlay0)),
             Span::styled(" esc / enter ", Style::default().fg(app.palette.text)),
         ])),
         stack.footer.unwrap_or_default(),
@@ -400,7 +401,7 @@ fn release_notes_preview_line_entries<'a>(
                     "●",
                     Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(" update ready", title_style),
+                Span::styled(t!(" update ready"), title_style),
             ]),
         ),
         (instruction_width + 1, Line::from(instruction_spans)),

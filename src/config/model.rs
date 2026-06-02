@@ -360,6 +360,8 @@ pub struct UiConfig {
     pub toast: ToastConfig,
     /// Play sounds when agents change state in background workspaces.
     pub sound: SoundConfig,
+    /// UI language locale code. "auto" detects from $LANG/$LC_MESSAGES, or set "en", "zh-CN" explicitly. Default: "auto".
+    pub locale: String,
 }
 
 /// Cursor shape (DECSCUSR) used for the forced IME anchor.
@@ -530,6 +532,7 @@ impl Default for UiConfig {
             accent: "cyan".into(),
             toast: ToastConfig::default(),
             sound: SoundConfig::default(),
+            locale: "auto".into(),
         }
     }
 }
