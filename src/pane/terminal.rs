@@ -16,8 +16,8 @@ use crate::protocol::CellData;
 use super::{
     input::{
         ghostty_key_event_from_terminal_key, ghostty_mouse_encoder_for_terminal,
-        ghostty_mouse_event_from_button_kind, ghostty_mouse_event_from_wheel_kind,
-        ghostty_prefers_herdr_text_encoding,
+        ghostty_mouse_event_from_button_kind, ghostty_mouse_event_from_motion_kind,
+        ghostty_mouse_event_from_wheel_kind, ghostty_prefers_herdr_text_encoding,
     },
     kitty_keyboard::KittyKeyboardTracker,
     osc::{
@@ -281,6 +281,17 @@ impl PaneTerminal {
     ) -> Option<Vec<u8>> {
         self.ghostty
             .encode_mouse_button(kind, column, row, modifiers)
+    }
+
+    pub fn encode_mouse_motion(
+        &self,
+        kind: crossterm::event::MouseEventKind,
+        column: u16,
+        row: u16,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> Option<Vec<u8>> {
+        self.ghostty
+            .encode_mouse_motion(kind, column, row, modifiers)
     }
 
     pub fn encode_mouse_wheel(
@@ -887,6 +898,24 @@ impl GhosttyPaneTerminal {
         encoder.encode(&event).ok()
     }
 
+    pub fn encode_mouse_motion(
+        &self,
+        kind: crossterm::event::MouseEventKind,
+        column: u16,
+        row: u16,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> Option<Vec<u8>> {
+        let Ok(core) = self.core.lock() else {
+            return None;
+        };
+        if !core.terminal.mode_get(MODE_MOUSE_ANY_MOTION).ok()? {
+            return None;
+        }
+        let mut encoder = ghostty_mouse_encoder_for_terminal(&core.terminal)?;
+        let event = ghostty_mouse_event_from_motion_kind(kind, column, row, modifiers)?;
+        encoder.encode(&event).ok()
+    }
+
     pub fn encode_mouse_wheel(
         &self,
         kind: crossterm::event::MouseEventKind,
@@ -1029,7 +1058,7 @@ impl GhosttyPaneTerminal {
                 Ok(rows) => rows,
                 Err(_) => return,
             };
-            let mut grapheme_bytes = Vec::new();
+            let mut grapheme_codepoints = Vec::new();
             let mut symbol_scratch = String::new();
             let mut y = 0u16;
             while y < area.height && rows.next() {
@@ -1052,7 +1081,7 @@ impl GhosttyPaneTerminal {
                         &cells,
                         basic.wide,
                         hide_kitty_placeholders,
-                        &mut grapheme_bytes,
+                        &mut grapheme_codepoints,
                         &mut symbol_scratch,
                     ) {
                         Ok(symbol) => symbol,
@@ -1197,7 +1226,7 @@ fn ghostty_collect_dirty_patch(
     let Ok(mut rows) = render_state.populate_row_iterator(&mut row_iterator) else {
         fallback!("populate_rows_error");
     };
-    let mut grapheme_bytes = Vec::new();
+    let mut grapheme_codepoints = Vec::new();
     let mut symbol_scratch = String::new();
     let mut patch_rows = Vec::new();
     let mut y = 0u16;
@@ -1235,7 +1264,7 @@ fn ghostty_collect_dirty_patch(
                     &cells,
                     basic.wide,
                     hide_kitty_placeholders,
-                    &mut grapheme_bytes,
+                    &mut grapheme_codepoints,
                     &mut symbol_scratch,
                 ) {
                     Ok(symbol) => symbol.to_owned(),
@@ -1510,7 +1539,7 @@ fn ghostty_buffer_symbol_into<'a>(
     cells: &crate::ghostty::RowCellIter<'_>,
     wide: crate::ghostty::CellWide,
     hide_kitty_placeholders: bool,
-    grapheme_bytes: &mut Vec<u8>,
+    grapheme_codepoints: &mut Vec<u32>,
     symbol_scratch: &'a mut String,
 ) -> Result<&'a str, crate::ghostty::Error> {
     symbol_scratch.clear();
@@ -1518,7 +1547,7 @@ fn ghostty_buffer_symbol_into<'a>(
         crate::ghostty::CellWide::SpacerTail => {}
         crate::ghostty::CellWide::SpacerHead => symbol_scratch.push(' '),
         crate::ghostty::CellWide::Narrow | crate::ghostty::CellWide::Wide => {
-            cells.grapheme_text_into(grapheme_bytes, symbol_scratch)?;
+            cells.grapheme_text_into(grapheme_codepoints, symbol_scratch)?;
             let hidden_kitty_placeholder = hide_kitty_placeholders
                 && symbol_scratch.chars().next().map(u32::from)
                     == Some(crate::ghostty::KITTY_UNICODE_PLACEHOLDER);
@@ -2348,6 +2377,40 @@ mod tests {
         );
 
         assert_eq!(encoded.as_deref(), Some(&b"\x1b[<36;5;7M"[..]));
+    }
+
+    #[test]
+    fn ghostty_mouse_moved_encoding_uses_any_motion_state() {
+        let (tx, _rx) = mpsc::channel(4);
+        let mut terminal = crate::ghostty::Terminal::new(80, 24, 0).unwrap();
+        terminal.write(b"\x1b[?1003h\x1b[?1006h");
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+
+        let encoded = pane.encode_mouse_motion(
+            crossterm::event::MouseEventKind::Moved,
+            4,
+            6,
+            crossterm::event::KeyModifiers::empty(),
+        );
+
+        assert_eq!(encoded.as_deref(), Some(&b"\x1b[<35;5;7M"[..]));
+    }
+
+    #[test]
+    fn ghostty_mouse_sgr_pixels_downgrades_to_cell_coordinates() {
+        let (tx, _rx) = mpsc::channel(4);
+        let mut terminal = crate::ghostty::Terminal::new(80, 24, 0).unwrap();
+        terminal.write(b"\x1b[?1003h\x1b[?1006h\x1b[?1016h");
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+
+        let encoded = pane.encode_mouse_motion(
+            crossterm::event::MouseEventKind::Moved,
+            4,
+            6,
+            crossterm::event::KeyModifiers::empty(),
+        );
+
+        assert_eq!(encoded.as_deref(), Some(&b"\x1b[<35;5;7M"[..]));
     }
 
     #[test]

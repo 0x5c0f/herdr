@@ -141,6 +141,8 @@
 "no supported agent CLIs found on PATH" = "no supported agent CLIs found on PATH"
 "optional features that are off by default" = "optional features that are off by default"
 "pane screen history {marker}" = "pane screen history {marker}"
+"switch to ascii input source in prefix (macOS)" = "switch to ascii input source in prefix (macOS)"
+"jump" = "jump"
 
 # Navigator overlay
 "search panes" = "search panes"
@@ -212,6 +214,10 @@
 "zoom pane" = "zoom pane"
 "resize mode" = "resize mode"
 "toggle sidebar" = "toggle sidebar"
+"focus pane left" = "focus pane left"
+"focus pane down" = "focus pane down"
+"focus pane up" = "focus pane up"
+"focus pane right" = "focus pane right"
 "focus pane left/down/up/right" = "focus pane left/down/up/right"
 "cycle pane next" = "cycle pane next"
 "cycle pane previous" = "cycle pane previous"

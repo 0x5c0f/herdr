@@ -12,7 +12,10 @@ use super::widgets::{
     render_action_button, render_modal_choice_list, render_panel_shell, ActionButtonSpec,
 };
 use crate::{
-    app::{state::Palette, AppState},
+    app::{
+        state::{ExperimentSetting, Palette},
+        AppState,
+    },
     config::ToastDelivery,
 };
 
@@ -413,28 +416,22 @@ fn render_settings_experiments(app: &AppState, frame: &mut Frame, area: Rect) {
         Style::default().fg(p.overlay1),
     );
 
-    let marker = if app.pane_history_persistence_enabled() {
-        "[✓]"
-    } else {
-        "[ ]"
-    };
-    let style = if app.settings.list.selected == 0 {
-        Style::default()
-            .bg(p.surface0)
-            .fg(p.text)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(p.subtext0)
-    };
-    let row = Rect::new(list_area.x, list_area.y, list_area.width, 1);
-    frame.render_widget(
-        Paragraph::new(format!(
-            " {}",
-            t!("pane screen history {marker}", marker = marker)
-        ))
-        .style(style),
-        row,
-    );
+    for (idx, setting) in ExperimentSetting::ALL.iter().copied().enumerate() {
+        let marker = if setting.enabled(app) { "[✓]" } else { "[ ]" };
+        let style = if app.settings.list.selected == idx {
+            Style::default()
+                .bg(p.surface0)
+                .fg(p.text)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(p.subtext0)
+        };
+        let row = Rect::new(list_area.x, list_area.y + idx as u16, list_area.width, 1);
+        frame.render_widget(
+            Paragraph::new(format!(" {} {marker}", t!(setting.label()))).style(style),
+            row,
+        );
+    }
 }
 
 #[cfg(test)]
@@ -492,5 +489,30 @@ mod tests {
             .collect::<String>();
 
         assert!(rendered.contains("pane screen history [ ]"));
+    }
+
+    #[test]
+    fn experiments_renders_switch_ascii_input_source_row() {
+        let mut app = AppState::test_new();
+        app.switch_ascii_input_source_in_prefix = true;
+        app.settings.section = SettingsSection::Experiments;
+        app.settings.list.selected = 1;
+        app.mode = Mode::Settings;
+
+        let mut terminal =
+            Terminal::new(TestBackend::new(80, 24)).expect("test terminal should initialize");
+        terminal
+            .draw(|frame| render_settings_overlay(&app, frame, Rect::new(0, 0, 80, 24)))
+            .expect("settings overlay should render");
+
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(rendered.contains("switch to ascii input source in prefix (macOS) [✓]"));
     }
 }

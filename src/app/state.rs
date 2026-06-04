@@ -813,6 +813,7 @@ pub(crate) struct CopyModeState {
     pub pane_id: PaneId,
     pub cursor_row: u16,
     pub cursor_col: u16,
+    pub entry_offset_from_bottom: usize,
     pub selection: Option<CopyModeSelection>,
 }
 
@@ -862,6 +863,34 @@ impl SettingsSection {
             Self::PaneLabels => "pane labels",
             Self::Experiments => "experiments",
             Self::Integrations => "integrations",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExperimentSetting {
+    PaneHistory,
+    SwitchAsciiInputSourceInPrefix,
+}
+
+impl ExperimentSetting {
+    pub(crate) const ALL: [Self; 2] = [Self::PaneHistory, Self::SwitchAsciiInputSourceInPrefix];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::PaneHistory => "pane screen history",
+            Self::SwitchAsciiInputSourceInPrefix => {
+                "switch to ascii input source in prefix (macOS)"
+            }
+        }
+    }
+
+    pub(crate) fn enabled(self, state: &AppState) -> bool {
+        match self {
+            Self::PaneHistory => state.pane_history_persistence_enabled(),
+            Self::SwitchAsciiInputSourceInPrefix => {
+                state.switch_ascii_input_source_in_prefix_enabled()
+            }
         }
     }
 }
@@ -1267,6 +1296,11 @@ pub struct AppState {
     pub cjk_ime_agents: Vec<crate::detect::Agent>,
     /// DECSCUSR shape parameter (1–6) for the IME anchor cursor.
     pub cjk_ime_cursor_shape: u8,
+    /// While prefix mode is active, switch the macOS host input source to an
+    /// ASCII-capable layout so prefix commands register as ASCII even when a
+    /// CJK IME is active. macOS only; a no-op elsewhere. See
+    /// `[experimental] switch_ascii_input_source_in_prefix`.
+    pub switch_ascii_input_source_in_prefix: bool,
     pub kitty_graphics_enabled: bool,
     pub default_shell: String,
     pub shell_mode: crate::config::ShellModeConfig,
@@ -1324,6 +1358,10 @@ impl AppState {
 
     pub fn pane_history_persistence_enabled(&self) -> bool {
         self.pane_history_persistence
+    }
+
+    pub fn switch_ascii_input_source_in_prefix_enabled(&self) -> bool {
+        self.switch_ascii_input_source_in_prefix
     }
 
     pub(crate) fn integration_updates_available(&self) -> bool {
@@ -1574,6 +1612,7 @@ impl AppState {
             cjk_ime_agent_filter_configured: false,
             cjk_ime_agents: Vec::new(),
             cjk_ime_cursor_shape: 2, // steady_block
+            switch_ascii_input_source_in_prefix: false,
             kitty_graphics_enabled: false,
             default_shell: String::new(),
             shell_mode: crate::config::ShellModeConfig::Auto,

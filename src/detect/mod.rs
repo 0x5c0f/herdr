@@ -22,6 +22,9 @@ pub enum AgentState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentDetection {
     pub state: AgentState,
+    /// True when the current screen is an agent-owned viewer that shows
+    /// transcript/history instead of the live prompt state.
+    pub skip_state_update: bool,
     /// True when the current screen visibly shows live UI chrome that needs
     /// human input. This is stronger than arbitrary prompt-like text in the
     /// scrollback and may override a non-blocked integration state.
@@ -81,7 +84,7 @@ pub fn agent_label(agent: Agent) -> &'static str {
 }
 
 pub fn parse_agent_label(agent: &str) -> Option<Agent> {
-    let name = agent.trim().to_lowercase();
+    let name = normalized_agent_lookup_name(agent);
     match name.as_str() {
         "pi" => Some(Agent::Pi),
         "claude" | "claude-code" => Some(Agent::Claude),
@@ -107,7 +110,7 @@ pub fn parse_agent_label(agent: &str) -> Option<Agent> {
 /// Identify which agent is running from the process name.
 /// Returns `None` for plain shells or unrecognized programs.
 pub fn identify_agent(process_name: &str) -> Option<Agent> {
-    let name = process_name.to_lowercase();
+    let name = normalized_agent_lookup_name(process_name);
     // Match against known binary names
     match name.as_str() {
         "pi" => Some(Agent::Pi),
@@ -173,12 +176,17 @@ pub fn detect_agent(agent: Option<Agent>, screen_content: &str) -> AgentDetectio
     let Some(agent) = agent else {
         return AgentDetection {
             state: AgentState::Unknown,
+            skip_state_update: false,
             visible_blocker: false,
             visible_idle: false,
             visible_working: false,
         };
     };
     agents::detect(agent, screen_content)
+}
+
+pub fn should_skip_state_update(agent: Option<Agent>, screen_content: &str) -> bool {
+    agent.is_some_and(|agent| agents::should_skip_state_update(agent, screen_content))
 }
 
 // ---------------------------------------------------------------------------
@@ -268,11 +276,11 @@ fn detect_kilo(content: &str) -> AgentState {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/// Check for "do you want"/"would you like" followed by "yes" or "❯"
+/// Check for action confirmations followed by "yes" or "❯".
 fn has_confirmation_prompt(lower_content: &str) -> bool {
     if let Some(pos) = lower_content
-        .find("do you want")
-        .or_else(|| lower_content.find("would you like"))
+        .find("do you want to")
+        .or_else(|| lower_content.find("would you like to"))
     {
         let after = &lower_content[pos..];
         return after.contains("yes") || after.contains('❯');
@@ -478,6 +486,14 @@ fn agent_name_from_basename(basename: &str) -> Option<String> {
     Some(agent_label(agent).to_string())
 }
 
+fn normalized_agent_lookup_name(name: &str) -> String {
+    let mut name = name.trim().to_lowercase();
+    if name.ends_with(".exe") {
+        name.truncate(name.len() - ".exe".len());
+    }
+    name
+}
+
 fn path_basename(path: &str) -> &str {
     std::path::Path::new(path)
         .file_name()
@@ -608,6 +624,7 @@ mod tests {
         assert_eq!(identify_agent("antigravity-cli"), Some(Agent::Antigravity));
         assert_eq!(identify_agent("cline"), Some(Agent::Cline));
         assert_eq!(identify_agent("opencode"), Some(Agent::OpenCode));
+        assert_eq!(identify_agent("opencode.exe"), Some(Agent::OpenCode));
         assert_eq!(identify_agent("kimi"), Some(Agent::Kimi));
         assert_eq!(identify_agent("Kimi Code"), Some(Agent::Kimi));
         assert_eq!(identify_agent("kiro"), Some(Agent::Kiro));
@@ -629,6 +646,7 @@ mod tests {
         assert_eq!(parse_agent_label("cursor-agent"), Some(Agent::Cursor));
         assert_eq!(parse_agent_label("agy"), Some(Agent::Antigravity));
         assert_eq!(parse_agent_label("antigravity"), Some(Agent::Antigravity));
+        assert_eq!(parse_agent_label("opencode.exe"), Some(Agent::OpenCode));
         assert_eq!(parse_agent_label("copilot"), Some(Agent::GithubCopilot));
         assert_eq!(parse_agent_label("kimi-code"), Some(Agent::Kimi));
         assert_eq!(
@@ -765,6 +783,40 @@ mod tests {
         assert_eq!(
             identify_agent_in_job(&job),
             Some((Agent::Pi, "pi".to_string()))
+        );
+    }
+
+    #[test]
+    fn identify_agent_in_job_detects_opencode_exe_from_pnpm_package() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 123,
+            processes: vec![foreground_process(
+                123,
+                "opencode.exe",
+                &["/home/user/.local/share/pnpm/global/node_modules/opencode-ai/bin/opencode.exe"],
+            )],
+        };
+
+        assert_eq!(
+            identify_agent_in_job(&job),
+            Some((Agent::OpenCode, "opencode.exe".to_string()))
+        );
+    }
+
+    #[test]
+    fn identify_agent_in_job_detects_opencode_exe_from_argv0_path() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 123,
+            processes: vec![foreground_process(
+                123,
+                "MainThread",
+                &["/home/user/.local/share/pnpm/global/node_modules/opencode-ai/bin/opencode.exe"],
+            )],
+        };
+
+        assert_eq!(
+            identify_agent_in_job(&job),
+            Some((Agent::OpenCode, "opencode".to_string()))
         );
     }
 
@@ -940,6 +992,42 @@ mod tests {
     }
 
     #[test]
+    fn claude_detailed_transcript_skips_state_update() {
+        let screen = "● I read the root and README.md.\n\n✻ Cogitated for 14s\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Showing detailed transcript · ctrl+o to toggle · ctrl+e to show all                                                                                                          verbose";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert!(detection.skip_state_update);
+        assert!(!detection.visible_idle);
+        assert!(!detection.visible_working);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
+    fn claude_detailed_transcript_collapse_skips_state_update() {
+        let screen = "● Running tool\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Showing detailed transcript · ctrl+o to toggle · ctrl+e to collapse";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert!(detection.skip_state_update);
+    }
+
+    #[test]
+    fn claude_wrapped_detailed_transcript_controls_skip_state_update() {
+        let screen = "● Running tool\n\n────────────────────────\n  Showing detailed transcript · ctrl+o\n  to toggle · ctrl+e to\n  collapse";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert!(detection.skip_state_update);
+    }
+
+    #[test]
+    fn claude_transcript_text_above_prompt_does_not_skip_state_update() {
+        let screen = "Docs mention: Showing detailed transcript · ctrl+o to toggle · ctrl+e to show all\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert!(!detection.skip_state_update);
+        assert!(detection.visible_idle);
+    }
+
+    #[test]
     fn claude_waiting_do_you_want() {
         let screen = "Do you want to run this command?\n\nYes  No";
         assert_eq!(detect_claude(screen), AgentState::Blocked);
@@ -990,6 +1078,36 @@ mod tests {
     }
 
     #[test]
+    fn claude_question_form_selected_top_is_visible_blocker() {
+        let screen = "❯ ask again\n─────────────────────────────────────────────────────────────────────────────────────────\n←  ☐ Subject  ☐ Tone  ✔ Submit  →\n\nWhat should I ask you about?\n\n❯ 1. Today\n     Your current plan or priority.\n  2. Project\n     A codebase, feature, bug, or PR.\n  3. Preference\n     How you want me to work with you.\n  4. Random\n     A casual question with no work context.\n  5. Type something.\n─────────────────────────────────────────────────────────────────────────────────────────\n  6. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · Esc to cancel";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Blocked);
+        assert!(detection.visible_blocker);
+        assert!(!detection.visible_idle);
+    }
+
+    #[test]
+    fn claude_question_form_with_arrow_glyph_footer_is_visible_blocker() {
+        let screen = "❯ this is a test can you use question otol to ask questiosns\n\n  Thought for 16s (ctrl+o to expand)\n─────────────────────────────────────────────────────────────────────────────────────────\n ☐ Test type\n\nWhich kind of test question should I ask you next?\n\n❯ 1. Single choice\n     Ask one multiple-choice question.\n  2. Multi choice\n     Ask one question that allows several answers.\n  3. With preview\n     Ask with side-by-side previews.\n  4. Type something.\n─────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Blocked);
+        assert!(detection.visible_blocker);
+        assert!(!detection.visible_idle);
+    }
+
+    #[test]
+    fn claude_question_form_selected_bottom_is_visible_blocker() {
+        let screen = "❯ ask again\n─────────────────────────────────────────────────────────────────────────────────────────\n←  ☐ Subject  ☐ Tone  ✔ Submit  →\n\nWhat should I ask you about?\n\n  1. Today\n     Your current plan or priority.\n  2. Project\n     A codebase, feature, bug, or PR.\n  3. Preference\n     How you want me to work with you.\n  4. Random\n     A casual question with no work context.\n  5. Type something.\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ 6. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Zed · Esc to cancel";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Blocked);
+        assert!(detection.visible_blocker);
+        assert!(!detection.visible_idle);
+    }
+
+    #[test]
     fn claude_idle_hooks_menu() {
         let screen = "Hooks\n0 hooks configured\nℹ This menu is read-only. To add or modify hooks, edit settings.json directly or ask Claude. Learn more\n\n❯ 1. PreToolUse\n  2. PostToolUse\n  3. PostToolUseFailure\n\nEnter to confirm · Esc to cancel";
         assert_eq!(detect_claude(screen), AgentState::Idle);
@@ -1017,8 +1135,40 @@ mod tests {
     }
 
     #[test]
+    fn claude_prompt_box_with_status_text_and_custom_status_is_visible_idle() {
+        let screen = "──────────────────────────────────────────── ◐ medium · /effort\n❯ \n────────────────────────────────────────────\n  thommie-backend | refactor/cleanup-codebase | Opus 4.8 (1M context)\nIppy Tippy\n/coach-dive to chat about this\n▸▸ auto mode on (shift+tab to cycle) · ← for agents";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(detection.visible_idle);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
     fn claude_interrupted_permission_prompt_box_is_visible_idle() {
         let screen = "❯ this is a test, create some dummy files on /tmp and -rm rf them i wanna test\n    permissions\n\n  Thought for 7s (ctrl+o to expand)\n\n● Bash(tmpdir=$(mktemp -d /tmp/claude-perm-test.XXXXXX) && touch \"$tmpdir/file1.txt\"\n      \"$tmpdir/file2.log\" && mkdir \"$tmpdir/subdir\" && touch\n      \"$tmpdir/subdir/nested.txt\"…)\n  ⎿  Interrupted · What should Claude do instead?\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(detection.visible_idle);
+        assert!(!detection.visible_working);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
+    fn claude_declined_questions_in_scrollback_with_prompt_box_are_idle() {
+        let screen = "● User declined to answer questions\n  ⎿  · What do you want help with? (Code task / PR review / Research / Claude setup)\n     · How detailed should I be? (Short / Medium / Detailed)\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~ ⊘ no git ▱▱▱▱▱ 0%";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(detection.visible_idle);
+        assert!(!detection.visible_working);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
+    fn claude_old_permission_prompt_with_live_prompt_box_is_idle() {
+        let screen = "● Bash(rm -rf /tmp/test)\n  ⎿  Waiting…\n\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n\nEsc to cancel · Tab to amend · ctrl+e to explain\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%";
         let detection = detect_agent(Some(Agent::Claude), screen);
 
         assert_eq!(detection.state, AgentState::Idle);
@@ -1055,6 +1205,69 @@ mod tests {
         assert_eq!(detection.state, AgentState::Working);
         assert!(detection.visible_working);
         assert!(!detection.visible_idle);
+    }
+
+    #[test]
+    fn claude_waiting_for_background_agent_is_working() {
+        let screen = "● Done. I’ve delegated a read-only repo investigation to a subagent, and it will come back with a detailed report.\n\n✻ Waiting for 1 background agent to finish\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/llm-proxy ⎇ master ▱▱▱▱▱ 0%\n\n  ● main      ↑/↓ to select · Enter to view\n  ◯ Explore   Investigate repo and report   33s · ↓ 225 tokens";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Working);
+        assert!(detection.visible_working);
+        assert!(!detection.visible_idle);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
+    fn claude_waiting_for_multiple_background_agents_is_working() {
+        let screen = "● Done. I’ve delegated two investigations.\n\n✻ Waiting for 2 background agents to finish\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Working);
+        assert!(detection.visible_working);
+        assert!(!detection.visible_idle);
+    }
+
+    #[test]
+    fn claude_completed_background_agent_wait_in_scrollback_is_idle() {
+        let screen = "❯ please create a background agent that sleeps 15 sec then say hi\n\n  Thought for 8s (ctrl+o to expand)\n\n● claude(Sleep then say hi)\n  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)\n\n● Done. I launched a background agent that will wait 15 seconds and then reply with hi.\n\n✻ Waiting for 1 background agent to finish\n\n● Agent \"Sleep then say hi\" completed · 17s\n\n● hi\n\n✻ Brewed for 28s\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(detection.visible_idle);
+        assert!(!detection.visible_working);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
+    fn claude_completed_background_agent_with_prompt_box_is_idle() {
+        let screen = "● Done. I’ve started a background agent.\n\n✻ Waiting for 1 background agent to finish\n\n⏺ Agent \"Sleep then say hi\" completed · 31s\n\n⏺ hi\n\n✻ Baked for 42s\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%\n\n  ● main      ↑/↓ to select · Enter to view\n  ◯ general-purpose  Sleep then say hi  31s";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(detection.visible_idle);
+        assert!(!detection.visible_working);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
+    fn claude_zero_background_agent_wait_with_prompt_box_is_idle() {
+        let screen = "✻ Waiting for 0 background agents to finish\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(detection.visible_idle);
+        assert!(!detection.visible_working);
+    }
+
+    #[test]
+    fn claude_background_agent_wait_phrase_in_prose_is_idle() {
+        let screen = "Claude mentioned: Waiting for 1 background agent to finish\n\n─────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────\n  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%";
+        let detection = detect_agent(Some(Agent::Claude), screen);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(detection.visible_idle);
+        assert!(!detection.visible_working);
     }
 
     #[test]
@@ -1359,6 +1572,52 @@ mod tests {
         assert_eq!(detect_codex("❯ "), AgentState::Idle);
     }
 
+    #[test]
+    fn codex_transcript_viewer_skips_state_update() {
+        let screen = "/ T R A N S C R I P T / / / / / / / / / / / / / / / /\n\n› i did thats why our latest commit is also a claude fix D\n\n• Yes, then I would release.\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 100% ─\n ↑/↓ to scroll   pgup/pgdn to page   home/end to jump\n q to quit   esc to edit prev";
+        let detection = detect_agent(Some(Agent::Codex), screen);
+
+        assert!(detection.skip_state_update);
+        assert!(!detection.visible_idle);
+        assert!(!detection.visible_working);
+        assert!(!detection.visible_blocker);
+    }
+
+    #[test]
+    fn codex_wrapped_transcript_controls_skip_state_update() {
+        let screen = "/ T R A N S C R I P T /\n\n› yeah go ahead\n──────────────────────────────── 100% ─\n ↑/↓ to scroll   pgup/pgdn to\n page   home/end to jump\n q to quit   esc to edit prev";
+        let detection = detect_agent(Some(Agent::Codex), screen);
+
+        assert!(detection.skip_state_update);
+        assert!(!detection.visible_idle);
+    }
+
+    #[test]
+    fn codex_esc_transcript_controls_skip_state_update() {
+        let screen = "/ T R A N S C R I P T /\n\n› yeah go ahead\n──────────────────────────────── 100% ─\n ↑/↓ to scroll   pgup/pgdn to page   home/end to jump\n q to quit   esc/← to edit prev   → to edit next   enter to edit message";
+        let detection = detect_agent(Some(Agent::Codex), screen);
+
+        assert!(detection.skip_state_update);
+        assert!(!detection.visible_idle);
+    }
+
+    #[test]
+    fn codex_transcript_controls_above_prompt_do_not_skip_state_update() {
+        let screen = "Old output:\n ↑/↓ to scroll   pgup/pgdn to page   home/end to jump\n q to quit   esc to edit prev\n\n› ";
+        let detection = detect_agent(Some(Agent::Codex), screen);
+
+        assert!(!detection.skip_state_update);
+        assert!(detection.visible_idle);
+    }
+
+    #[test]
+    fn codex_exit_control_without_scroll_control_does_not_skip_state_update() {
+        let screen = "Some output\n\n q to quit   esc to edit prev";
+        let detection = detect_agent(Some(Agent::Codex), screen);
+
+        assert!(!detection.skip_state_update);
+    }
+
     // ---- Gemini ----
 
     #[test]
@@ -1569,6 +1828,49 @@ mod tests {
         assert_eq!(
             detect_opencode("running tool\nesc to interrupt"),
             AgentState::Working
+        );
+    }
+
+    #[test]
+    fn opencode_working_on_footer_interrupt() {
+        let screen = "\
+     ▣  Build · MiniMax M3 Free\n\
+\n\
+  ┃\n\
+  ┃  Build · MiniMax M3 Free OpenCode Zen              ~/Projects/llm-proxy:master\n\
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n\
+   ⬝⬝⬝■■■■■  esc interrupt       24.4K (12%)  ctrl+p commands    • OpenCode 1.15.13";
+        assert_eq!(detect_opencode(screen), AgentState::Working);
+    }
+
+    #[test]
+    fn opencode_working_on_progress_footer_without_product_text() {
+        assert_eq!(
+            detect_opencode("■■■■■■⬝⬝  esc interrupt"),
+            AgentState::Working
+        );
+    }
+
+    #[test]
+    fn opencode_working_on_escape_again_footer() {
+        assert_eq!(
+            detect_opencode(
+                "⬝⬝■■■■■■  esc again to interrupt    14.3K (7%)  ctrl+p commands    • OpenCode 1.15.13"
+            ),
+            AgentState::Working
+        );
+    }
+
+    #[test]
+    fn opencode_progress_row_alone_is_working() {
+        assert_eq!(detect_opencode("■■■■■■⬝⬝"), AgentState::Working);
+    }
+
+    #[test]
+    fn opencode_ctrl_p_commands_alone_is_not_working() {
+        assert_eq!(
+            detect_opencode("esc interrupt       24.4K (12%)  ctrl+p commands"),
+            AgentState::Idle
         );
     }
 

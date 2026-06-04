@@ -141,6 +141,8 @@
 "no supported agent CLIs found on PATH" = "在 PATH 中未找到支持的代理 CLI"
 "optional features that are off by default" = "默认关闭的可选功能"
 "pane screen history {marker}" = "窗格屏幕历史 {marker}"
+"switch to ascii input source in prefix (macOS)" = "前缀模式下切换到 ASCII 输入源 (macOS)"
+"jump" = "跳转"
 
 # 导航器
 "search panes" = "搜索窗格"
@@ -212,6 +214,10 @@
 "zoom pane" = "缩放窗格"
 "resize mode" = "调整大小模式"
 "toggle sidebar" = "切换侧边栏"
+"focus pane left" = "聚焦左侧窗格"
+"focus pane down" = "聚焦下方窗格"
+"focus pane up" = "聚焦上方窗格"
+"focus pane right" = "聚焦右侧窗格"
 "focus pane left/down/up/right" = "聚焦窗格 左/下/上/右"
 "cycle pane next" = "切换到下一个窗格"
 "cycle pane previous" = "切换到上一个窗格"
