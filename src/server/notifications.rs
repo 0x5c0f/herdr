@@ -26,13 +26,8 @@ pub(crate) fn toast_message_from_state_change(
     suppress_active_tab_notifications: bool,
     prev_state: AgentState,
     new_state: AgentState,
+    previous_agent_label: Option<&str>,
 ) -> Option<String> {
-    let kind = app::actions::notification_toast_for_state_change(
-        suppress_active_tab_notifications,
-        prev_state,
-        new_state,
-    )?;
-
     state
         .workspaces
         .iter()
@@ -44,6 +39,13 @@ pub(crate) fn toast_message_from_state_change(
                     .terminals
                     .get(&pane.attached_terminal_id)
                     .and_then(|terminal| terminal.effective_agent_label())?;
+                let kind = app::actions::notification_toast_for_state_change_with_agent_labels(
+                    suppress_active_tab_notifications,
+                    prev_state,
+                    new_state,
+                    previous_agent_label,
+                    Some(agent_label),
+                )?;
                 let workspace_label = ws.display_name_from(&state.terminals, terminal_runtimes);
                 Some(format!(
                     "{} {}: {}",
@@ -65,10 +67,14 @@ fn toast_event_text(kind: app::state::ToastKind) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
+    #[cfg(unix)]
     use crate::detect::Agent;
+    #[cfg(unix)]
     use crate::terminal::TerminalState;
 
+    #[cfg(unix)]
     fn init_repo(path: &std::path::Path) {
         let status = std::process::Command::new("git")
             .args(["init", "-q"])
@@ -78,6 +84,7 @@ mod tests {
         assert!(status.success(), "git init failed for {}", path.display());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn toast_message_uses_live_root_runtime_cwd_label() {
         let mut state = AppState::test_new();
@@ -115,6 +122,7 @@ mod tests {
             0,
             crate::terminal_theme::TerminalTheme::default(),
             crate::pane::PaneShellConfig::new("/bin/sh", crate::config::ShellModeConfig::NonLogin),
+            &crate::pane::PaneLaunchEnv::default(),
             events,
             std::sync::Arc::new(tokio::sync::Notify::new()),
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -134,6 +142,7 @@ mod tests {
             false,
             AgentState::Working,
             AgentState::Idle,
+            Some("codex"),
         );
 
         assert_eq!(

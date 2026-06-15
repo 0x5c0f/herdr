@@ -13,8 +13,13 @@ use super::{
     widgets::{panel_contrast_fg, render_panel_shell},
 };
 use crate::app::state::{AppState, NavigatorRow, NavigatorStateFilter, NavigatorTarget};
+use crate::terminal::TerminalRuntimeRegistry;
 
-pub(super) fn render_navigator_overlay(app: &AppState, frame: &mut Frame) {
+pub(super) fn render_navigator_overlay(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    frame: &mut Frame,
+) {
     let popup = app.navigator_popup_rect();
     let Some(inner) = render_panel_shell(frame, popup, app.palette.accent, app.palette.panel_bg)
     else {
@@ -29,10 +34,10 @@ pub(super) fn render_navigator_overlay(app: &AppState, frame: &mut Frame) {
 
     if body.height > 0 {
         render_separator(frame, Rect::new(inner.x, search.y + 1, inner.width, 1), app);
-        render_rows(app, frame, body);
-        render_navigator_scrollbar(app, frame, body);
+        render_rows(app, terminal_runtimes, frame, body);
+        render_navigator_scrollbar(app, terminal_runtimes, frame, body);
     }
-    render_detail(app, frame, detail);
+    render_detail(app, terminal_runtimes, frame, detail);
     render_footer(app, frame, footer);
 }
 
@@ -131,8 +136,13 @@ fn render_separator(frame: &mut Frame, area: Rect, app: &AppState) {
     );
 }
 
-fn render_rows(app: &AppState, frame: &mut Frame, body: Rect) {
-    let rows = app.navigator_rows();
+fn render_rows(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    frame: &mut Frame,
+    body: Rect,
+) {
+    let rows = app.navigator_rows_from(terminal_runtimes);
     let start = app.navigator.scroll.min(rows.len());
     let end = rows.len().min(start.saturating_add(body.height as usize));
     for (visible_idx, row) in rows[start..end].iter().enumerate() {
@@ -229,11 +239,16 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
     }
 }
 
-fn render_navigator_scrollbar(app: &AppState, frame: &mut Frame, body: Rect) {
+fn render_navigator_scrollbar(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    frame: &mut Frame,
+    body: Rect,
+) {
     if body.width <= 1 || body.height == 0 {
         return;
     }
-    let rows = app.navigator_rows().len();
+    let rows = app.navigator_rows_from(terminal_runtimes).len();
     let viewport = body.height as usize;
     if rows <= viewport {
         return;
@@ -271,12 +286,17 @@ fn metadata_width(width: u16) -> u16 {
     }
 }
 
-fn render_detail(app: &AppState, frame: &mut Frame, area: Rect) {
+fn render_detail(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    frame: &mut Frame,
+    area: Rect,
+) {
     if area.height == 0 || area.width == 0 {
         return;
     }
     render_separator(frame, area, app);
-    let detail = selected_detail(app);
+    let detail = selected_detail(app, terminal_runtimes);
     if detail.is_empty() {
         return;
     }
@@ -287,50 +307,64 @@ fn render_detail(app: &AppState, frame: &mut Frame, area: Rect) {
     );
 }
 
-fn selected_detail(app: &AppState) -> String {
-    let rows = app.navigator_rows();
+fn selected_detail(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) -> String {
+    let rows = app.navigator_rows_from(terminal_runtimes);
     let Some(row) = rows.get(app.navigator.selected) else {
         return String::new();
     };
     match row.target {
-        NavigatorTarget::Workspace { ws_idx } => workspace_detail(app, ws_idx),
-        NavigatorTarget::Tab { ws_idx, tab_idx } => tab_detail(app, ws_idx, tab_idx),
+        NavigatorTarget::Workspace { ws_idx } => workspace_detail(app, terminal_runtimes, ws_idx),
+        NavigatorTarget::Tab { ws_idx, tab_idx } => {
+            tab_detail(app, terminal_runtimes, ws_idx, tab_idx)
+        }
         NavigatorTarget::Pane {
             ws_idx,
             tab_idx,
             pane_id,
-        } => pane_detail(app, ws_idx, tab_idx, pane_id),
+        } => pane_detail(app, terminal_runtimes, ws_idx, tab_idx, pane_id),
     }
 }
 
-fn workspace_detail(app: &AppState, ws_idx: usize) -> String {
+fn workspace_detail(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    ws_idx: usize,
+) -> String {
     let Some(ws) = app.workspaces.get(ws_idx) else {
         return String::new();
     };
-    let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-    let label = ws.display_name_from(&app.terminals, &terminal_runtimes);
+    let label = ws.display_name_from(&app.terminals, terminal_runtimes);
     let pane_count = ws.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>();
     let mut parts = vec![label, t!("{count} panes", count = pane_count).into_owned()];
-    if !rowless_workspace_activity(app, ws_idx).is_empty() {
-        parts.push(rowless_workspace_activity(app, ws_idx));
+    if !rowless_workspace_activity(app, terminal_runtimes, ws_idx).is_empty() {
+        parts.push(rowless_workspace_activity(app, terminal_runtimes, ws_idx));
     }
     parts.join(" · ")
 }
 
-fn tab_detail(app: &AppState, ws_idx: usize, tab_idx: usize) -> String {
+fn tab_detail(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    ws_idx: usize,
+    tab_idx: usize,
+) -> String {
     let Some(ws) = app.workspaces.get(ws_idx) else {
         return String::new();
     };
     let Some(tab) = ws.tabs.get(tab_idx) else {
         return String::new();
     };
-    let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
     let mut parts = vec![
-        ws.display_name_from(&app.terminals, &terminal_runtimes),
-        format!("{}: {}", t!("tab"), tab.display_name()),
+        ws.display_name_from(&app.terminals, terminal_runtimes),
+        format!(
+            "{}: {}",
+            t!("tab"),
+            ws.tab_display_name(tab_idx)
+                .unwrap_or_else(|| (tab_idx + 1).to_string())
+        ),
         t!("{count} panes", count = tab.panes.len()).into_owned(),
     ];
-    let rows = app.navigator_rows();
+    let rows = app.navigator_rows_from(terminal_runtimes);
     if let Some(meta) = rows
         .into_iter()
         .find(|row| matches!(row.target, NavigatorTarget::Tab { ws_idx: row_ws_idx, tab_idx: row_tab_idx } if row_ws_idx == ws_idx && row_tab_idx == tab_idx))
@@ -344,6 +378,7 @@ fn tab_detail(app: &AppState, ws_idx: usize, tab_idx: usize) -> String {
 
 fn pane_detail(
     app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
     ws_idx: usize,
     tab_idx: usize,
     pane_id: crate::layout::PaneId,
@@ -354,10 +389,14 @@ fn pane_detail(
     let Some(tab) = ws.tabs.get(tab_idx) else {
         return String::new();
     };
-    let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-    let mut parts = vec![ws.display_name_from(&app.terminals, &terminal_runtimes)];
+    let mut parts = vec![ws.display_name_from(&app.terminals, terminal_runtimes)];
     if ws.tabs.len() > 1 {
-        parts.push(format!("{}: {}", t!("tab"), tab.display_name()));
+        parts.push(format!(
+            "{}: {}",
+            t!("tab"),
+            ws.tab_display_name(tab_idx)
+                .unwrap_or_else(|| (tab_idx + 1).to_string())
+        ));
     }
     if let Some(pane_number) = ws.public_pane_number(pane_id) {
         parts.push(t!("pane {number}", number = pane_number).into_owned());
@@ -399,8 +438,12 @@ fn pane_detail(
     parts.join(" · ")
 }
 
-fn rowless_workspace_activity(app: &AppState, ws_idx: usize) -> String {
-    app.navigator_rows()
+fn rowless_workspace_activity(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    ws_idx: usize,
+) -> String {
+    app.navigator_rows_from(terminal_runtimes)
         .into_iter()
         .find(|row| matches!(row.target, NavigatorTarget::Workspace { ws_idx: row_ws_idx } if row_ws_idx == ws_idx))
         .map(|row| row.meta)
