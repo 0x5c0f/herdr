@@ -544,7 +544,29 @@ fn run_copilot_hook(hook_input: &str) -> Option<serde_json::Value> {
     )
 }
 
+fn run_devin_hook(
+    action: &str,
+    hook_input: &str,
+    envs: &[(&str, &str)],
+) -> Option<serde_json::Value> {
+    run_shell_hook_with_env(
+        "src/integration/assets/devin/herdr-agent-state.sh",
+        &[action],
+        hook_input,
+        envs,
+    )
+}
+
 fn run_shell_hook(asset_path: &str, args: &[&str], hook_input: &str) -> Option<serde_json::Value> {
+    run_shell_hook_with_env(asset_path, args, hook_input, &[])
+}
+
+fn run_shell_hook_with_env(
+    asset_path: &str,
+    args: &[&str],
+    hook_input: &str,
+    envs: &[(&str, &str)],
+) -> Option<serde_json::Value> {
     let base = unique_test_dir();
     fs::create_dir_all(&base).unwrap();
     let socket_path = base.join("herdr.sock");
@@ -574,7 +596,8 @@ fn run_shell_hook(asset_path: &str, args: &[&str], hook_input: &str) -> Option<s
     });
 
     let hook_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(asset_path);
-    let mut child = Command::new("bash")
+    let mut command = Command::new("bash");
+    command
         .arg(hook_path)
         .args(args)
         .env("HERDR_ENV", "1")
@@ -582,9 +605,11 @@ fn run_shell_hook(asset_path: &str, args: &[&str], hook_input: &str) -> Option<s
         .env("HERDR_PANE_ID", "p_test")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+        .stderr(Stdio::piped());
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let mut child = command.spawn().unwrap();
     let mut stdin = child.stdin.take().unwrap();
     stdin.write_all(hook_input.as_bytes()).unwrap();
     drop(stdin);
@@ -693,6 +718,113 @@ fn copilot_hook_does_not_report_lifecycle_state() {
             "copilot session-only hook should ignore lifecycle payload {payload}"
         );
     }
+}
+
+#[test]
+fn devin_hook_ignores_prompt_session_list_fallback() {
+    let request = run_devin_hook(
+        "session",
+        r#"{"hook_event_name":"UserPromptSubmit","prompt":"run tests"}"#,
+        &[
+            ("DEVIN_PROJECT_DIR", "/tmp/project"),
+            (
+                "HERDR_DEVIN_LIST_JSON",
+                r#"[{"id":"older-session","working_directory":"/tmp/other"},{"id":"devin-session","working_directory":"/tmp/project"}]"#,
+            ),
+        ],
+    );
+
+    assert!(request.is_none());
+}
+
+#[test]
+fn devin_hook_reports_session_id_from_stdin_without_state() {
+    let request = run_devin_hook(
+        "session",
+        r#"{"hook_event_name":"SessionStart","session_id":"devin-session","source":"startup"}"#,
+        &[("HERDR_DEVIN_LIST_JSON", r#"[{"id":"older-session"}]"#)],
+    )
+    .expect("devin session start should report session identity");
+
+    assert_eq!(request["method"], "pane.report_agent_session");
+    assert_eq!(request["params"]["agent"], "devin");
+    assert_eq!(request["params"]["agent_session_id"], "devin-session");
+    assert!(request["params"].get("state").is_none());
+}
+
+#[test]
+fn devin_hook_prefers_hook_session_id_over_list() {
+    let request = run_devin_hook(
+        "session",
+        r#"{"hook_event_name":"PreToolUse","sessionId":"fresh-session","tool_name":"exec"}"#,
+        &[
+            ("DEVIN_PROJECT_DIR", "/tmp/project"),
+            (
+                "HERDR_DEVIN_LIST_JSON",
+                r#"[{"id":"older-session","working_directory":"/tmp/project"}]"#,
+            ),
+        ],
+    )
+    .expect("devin tool hook should report session identity");
+
+    assert_eq!(request["method"], "pane.report_agent_session");
+    assert_eq!(request["params"]["agent_session_id"], "fresh-session");
+    assert!(request["params"].get("state").is_none());
+}
+
+#[test]
+fn devin_hook_reports_tool_session_from_list_without_state() {
+    let request = run_devin_hook(
+        "session",
+        r#"{"hook_event_name":"PreToolUse","tool_name":"exec"}"#,
+        &[
+            ("DEVIN_PROJECT_DIR", "/tmp/project"),
+            (
+                "HERDR_DEVIN_LIST_JSON",
+                r#"[{"id":"older-session","working_directory":"/tmp/other"},{"id":"devin-session","working_directory":"/tmp/project"}]"#,
+            ),
+        ],
+    )
+    .expect("devin tool hook should report session identity");
+
+    assert_eq!(request["method"], "pane.report_agent_session");
+    assert_eq!(request["params"]["agent"], "devin");
+    assert_eq!(request["params"]["agent_session_id"], "devin-session");
+    assert!(request["params"].get("state").is_none());
+}
+
+#[test]
+fn devin_hook_ignores_startup_session_list_fallback() {
+    let request = run_devin_hook(
+        "session",
+        r#"{"hook_event_name":"SessionStart","source":"startup"}"#,
+        &[
+            ("DEVIN_PROJECT_DIR", "/tmp/project"),
+            (
+                "HERDR_DEVIN_LIST_JSON",
+                r#"[{"id":"stale-session","working_directory":"/tmp/project"}]"#,
+            ),
+        ],
+    );
+
+    assert!(request.is_none());
+}
+
+#[test]
+fn devin_hook_ignores_non_matching_session_list_entries() {
+    let request = run_devin_hook(
+        "session",
+        r#"{"hook_event_name":"PreToolUse","tool_name":"exec"}"#,
+        &[
+            ("DEVIN_PROJECT_DIR", "/tmp/project"),
+            (
+                "HERDR_DEVIN_LIST_JSON",
+                r#"[{"id":"other-session","working_directory":"/tmp/other"}]"#,
+            ),
+        ],
+    );
+
+    assert!(request.is_none());
 }
 
 #[test]
@@ -1213,7 +1345,7 @@ fn integration_commands_run_locally_when_server_is_missing() {
         .unwrap();
     assert_eq!(integration_status.status.code(), Some(0));
     let status_stdout = String::from_utf8_lossy(&integration_status.stdout);
-    assert!(status_stdout.contains("pi: current (v2)"));
+    assert!(status_stdout.contains("pi: current (v3)"));
     assert!(status_stdout.contains("claude: not installed"));
 
     let integration_uninstall = Command::new(env!("CARGO_BIN_EXE_herdr"))
@@ -1870,6 +2002,76 @@ fn worktree_management_commands_work() {
     );
     assert_eq!(force_removed["result"]["type"], "worktree_removed");
     assert_eq!(force_removed["result"]["forced"], true);
+    assert!(!checkout.exists());
+
+    cleanup_spawned_herdr(herdr, base);
+}
+
+#[test]
+fn forced_worktree_remove_terminates_processes_inside_checkout() {
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let socket_path = runtime_dir.join("herdr.sock");
+    let repo = base.join("repo");
+    let checkout = base.join("checkout-with-process");
+    create_committed_repo(&repo);
+
+    let herdr = spawn_herdr(&config_home, &runtime_dir, &socket_path);
+    wait_for_socket(&socket_path, Duration::from_secs(5));
+
+    let created = run_cli_json(
+        &socket_path,
+        &[
+            "worktree",
+            "create",
+            "--cwd",
+            repo.to_str().unwrap(),
+            "--branch",
+            "worktree/force-process",
+            "--path",
+            checkout.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    let child_workspace_id = created["result"]["workspace"]["workspace_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let pane_id = created["result"]["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let pid_file = base.join("worktree-remove-force.pid");
+    let command = format!(
+        "python3 -c 'import os,time,pathlib; pathlib.Path(r\"{}\").write_text(str(os.getpid())); time.sleep(1000)'",
+        pid_file.display()
+    );
+    let ran = run_cli(&socket_path, &["pane", "run", &pane_id, &command]);
+    assert!(
+        ran.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    let pid = wait_for_pid_file(&pid_file, Duration::from_secs(5)).unwrap_or_else(|err| {
+        panic!("failed to read pane child pid: {err}");
+    });
+    assert!(process_exists(pid), "child process was not running");
+
+    let removed = run_cli_json(
+        &socket_path,
+        &[
+            "worktree",
+            "remove",
+            "--workspace",
+            &child_workspace_id,
+            "--force",
+            "--json",
+        ],
+    );
+    assert_eq!(removed["result"]["type"], "worktree_removed");
+    assert!(wait_for_pid_exit(pid, Duration::from_secs(3)));
     assert!(!checkout.exists());
 
     cleanup_spawned_herdr(herdr, base);
